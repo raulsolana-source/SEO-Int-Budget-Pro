@@ -98,7 +98,7 @@ const App: React.FC = () => {
     setIsGenerating(true);
     setAiProposal('');
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const prompt = `
         Act as a Senior International SEO Consultant.
         Generate a persuasive executive summary for a commercial SEO proposal under the "Partner" pricing model.
@@ -128,7 +128,7 @@ const App: React.FC = () => {
       setAiProposal(response.text || 'Could not generate text.');
     } catch (error) {
       console.error(error);
-      setAiProposal('Error connecting to AI. Please check your connection.');
+      setAiProposal('Error connecting to AI. Please ensure your API key is configured correctly in the environment.');
     } finally {
       setIsGenerating(false);
     }
@@ -382,7 +382,7 @@ const App: React.FC = () => {
                     <div className="h-4 bg-slate-100 rounded w-2/3"></div>
                   </div>
                 ) : (
-                  <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed text-sm">
+                  <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed text-sm whitespace-pre-wrap">
                     {aiProposal}
                   </div>
                 )}
