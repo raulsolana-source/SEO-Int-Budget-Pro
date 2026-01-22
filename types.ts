@@ -1,13 +1,13 @@
 
 export enum Complexity {
-  LOW = 'Baja',
-  MEDIUM = 'Media',
-  HIGH = 'Alta'
+  LOW = 'Low',
+  MEDIUM = 'Medium',
+  HIGH = 'High'
 }
 
 export enum SiteType {
   BLOG_SaaS = 'Blog / SaaS / Lead Gen',
-  ECOMMERCE = 'Ecommerce (Medio)',
+  ECOMMERCE = 'Ecommerce (Medium)',
   ENTERPRISE = 'Enterprise / Marketplace'
 }
 

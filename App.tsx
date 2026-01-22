@@ -1,20 +1,21 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { 
   Calculator, 
   Globe, 
-  Settings, 
   TrendingUp, 
-  Layers, 
   FileText, 
   Zap,
-  ChevronRight,
   ShieldCheck,
   CheckCircle2,
-  PieChart as PieIcon,
   Sparkles,
-  Loader2
+  Loader2,
+  Plus,
+  Minus,
+  MessageSquare,
+  FileCode,
+  Layout
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -24,9 +25,7 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer, 
-  Cell,
-  PieChart,
-  Pie
+  Cell
 } from 'recharts';
 import { Complexity, SiteType, BudgetConfig } from './types';
 import { TIERS } from './constants';
@@ -38,6 +37,12 @@ const App: React.FC = () => {
     siteType: SiteType.BLOG_SaaS,
     technicalDebt: Complexity.MEDIUM,
     contentVolume: Complexity.MEDIUM,
+  });
+
+  const [addons, setAddons] = useState({
+    extraArticles: 0,
+    extraLandings: 0,
+    extraTechSprints: 0
   });
 
   const [aiProposal, setAiProposal] = useState<string>('');
@@ -54,22 +59,40 @@ const App: React.FC = () => {
     return TIERS[0];
   }, [config]);
 
-  // Logic to calculate estimated prices based on variables
+  // Pricing constants for Add-ons
+  const ADDON_COSTS = {
+    langSetup: 400,
+    langMonthly: 400,
+    article: 400,
+    landing: 625,
+    sprint: 325
+  };
+
+  // Logic to calculate estimated prices
   const estimatedPrices = useMemo(() => {
-    const baseExtra = config.languages * 250;
-    const complexityMultiplier = config.complexity === Complexity.HIGH ? 1.5 : (config.complexity === Complexity.MEDIUM ? 1.2 : 1.0);
-    const contentMultiplier = config.contentVolume === Complexity.HIGH ? 1.4 : (config.contentVolume === Complexity.MEDIUM ? 1.1 : 0.9);
+    let setup = recommendedTier.setupRange[0];
+    let monthly = recommendedTier.monthlyRange[0];
+
+    if (config.complexity === Complexity.HIGH) setup *= 1.2;
+    if (config.technicalDebt === Complexity.HIGH) setup *= 1.1;
+
+    const baseLangs = recommendedTier.name.includes('Starter') ? 1 : recommendedTier.name.includes('Growth') ? 2 : 3;
+    const extraLangs = Math.max(0, config.languages - baseLangs);
     
-    // Aligned with the tiers ranges
-    let setup = recommendedTier.setupRange[0] * complexityMultiplier;
-    let monthly = recommendedTier.monthlyRange[0] * contentMultiplier + (config.languages - 1) * 150;
+    setup += extraLangs * ADDON_COSTS.langSetup;
+    monthly += extraLangs * ADDON_COSTS.langMonthly;
+
+    monthly += addons.extraArticles * ADDON_COSTS.article;
+    monthly += addons.extraLandings * ADDON_COSTS.landing;
+    monthly += addons.extraTechSprints * ADDON_COSTS.sprint;
 
     return {
       setup: Math.round(setup),
       monthly: Math.round(monthly),
-      linkbuilding: recommendedTier.linkbuildingRange[0]
+      linkbuilding: recommendedTier.linkbuildingRange[0],
+      extraLangs
     };
-  }, [config, recommendedTier]);
+  }, [config, recommendedTier, addons]);
 
   const generateAIProposal = async () => {
     setIsGenerating(true);
@@ -77,25 +100,24 @@ const App: React.FC = () => {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const prompt = `
-        Actúa como un Consultor Senior de SEO Internacional.
-        Genera un resumen ejecutivo persuasivo para una propuesta comercial de SEO Internacional.
-        Detalles del proyecto:
-        - Idiomas: ${config.languages}
-        - Tipo de sitio: ${config.siteType}
-        - Complejidad técnica: ${config.complexity}
-        - Deuda técnica inicial: ${config.technicalDebt}
-        - Volumen de contenidos deseado: ${config.contentVolume}
-        - Plan recomendado: ${recommendedTier.name}
-        - Coste Setup: ${estimatedPrices.setup}€
-        - Coste Mensual: ${estimatedPrices.monthly}€
+        Act as a Senior International SEO Consultant.
+        Generate a persuasive executive summary for a commercial SEO proposal under the "Partner" pricing model.
+        Project details:
+        - Total languages: ${config.languages} (includes ${estimatedPrices.extraLangs} additional languages)
+        - Site type: ${config.siteType}
+        - Complexity: ${config.complexity}
+        - Recommended plan: ${recommendedTier.name}
+        - Extras: ${addons.extraArticles} extra articles, ${addons.extraLandings} extra landings, ${addons.extraTechSprints} technical sprints.
+        - Setup Cost: ${estimatedPrices.setup}€
+        - Monthly Fee: ${estimatedPrices.monthly}€
         
-        El tono debe ser profesional, estratégico y enfocado a resultados. 
-        Estructura el texto en:
-        1. Desafío Estratégico.
-        2. Nuestra Solución (basada en el plan ${recommendedTier.name}).
-        3. Valor Diferencial (menciona SEO para IA y escalabilidad multidioma).
-        4. Inversión estimada.
-        Usa Markdown para el formato. Máximo 300 palabras.
+        The tone must be professional, strategic, and results-oriented.
+        Output in English. Structure the text in:
+        1. Strategic Challenge.
+        2. Our Solution (detail why the ${recommendedTier.name} plan is the right fit).
+        3. Value of selected Add-ons.
+        4. Estimated investment and next steps.
+        Use Markdown for formatting. Maximum 300 words.
       `;
 
       const response = await ai.models.generateContent({
@@ -103,37 +125,42 @@ const App: React.FC = () => {
         contents: prompt,
       });
 
-      setAiProposal(response.text || 'No se pudo generar el texto.');
+      setAiProposal(response.text || 'Could not generate text.');
     } catch (error) {
       console.error(error);
-      setAiProposal('Error al conectar con la IA. Por favor, revisa tu conexión.');
+      setAiProposal('Error connecting to AI. Please check your connection.');
     } finally {
       setIsGenerating(false);
     }
   };
 
   const chartData = [
-    { name: 'Setup One-off', value: estimatedPrices.setup },
-    { name: 'Mensual Fee', value: estimatedPrices.monthly },
-    { name: 'Linkbuilding Est.', value: estimatedPrices.linkbuilding }
+    { name: 'Base Monthly', value: recommendedTier.monthlyRange[0] },
+    { name: 'Extras/Langs', value: estimatedPrices.monthly - recommendedTier.monthlyRange[0] },
+    { name: 'Setup', value: estimatedPrices.setup }
   ];
 
-  const COLORS = ['#6366f1', '#10b981', '#f59e0b'];
+  const COLORS = ['#10b981', '#6366f1', '#f59e0b'];
+
+  const updateAddon = (key: keyof typeof addons, delta: number) => {
+    setAddons(prev => ({ ...prev, [key]: Math.max(0, prev[key] + delta) }));
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 pb-20">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
+    <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-indigo-600 p-2 rounded-lg">
               <Globe className="text-white w-6 h-6" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">SEO Int <span className="text-indigo-600">Budget Pro</span></h1>
+            <h1 className="text-xl font-bold tracking-tight">SEO Int <span className="text-indigo-600">Partner Pro</span></h1>
           </div>
-          <div className="hidden md:flex items-center gap-4 text-sm font-medium text-gray-500">
-            <span className="flex items-center gap-1"><ShieldCheck className="w-4 h-4" /> Calculadora Profesional</span>
-            <span className="flex items-center gap-1"><Sparkles className="w-4 h-4" /> Generación por IA</span>
+          <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-500">
+            <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-emerald-500" /> Partner Pricing 2025</span>
+            <button onClick={generateAIProposal} className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full hover:bg-indigo-100 transition-colors">
+              <Sparkles className="w-4 h-4" /> Generate Proposal
+            </button>
           </div>
         </div>
       </header>
@@ -141,19 +168,19 @@ const App: React.FC = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
-          {/* Left Column: Calculator Inputs */}
+          {/* Inputs Column */}
           <div className="lg:col-span-4 space-y-6">
-            <section className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
               <div className="flex items-center gap-2 mb-6">
                 <Calculator className="w-5 h-5 text-indigo-600" />
-                <h2 className="text-lg font-semibold">Configuración del Proyecto</h2>
+                <h2 className="text-lg font-semibold">Base Configuration</h2>
               </div>
 
-              <div className="space-y-5">
+              <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 flex justify-between">
-                    Idiomas / Mercados
-                    <span className="text-indigo-600 font-bold">{config.languages}</span>
+                  <label className="block text-sm font-semibold text-slate-700 mb-3 flex justify-between">
+                    Languages / Markets
+                    <span className="bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full text-xs font-bold">{config.languages}</span>
                   </label>
                   <input 
                     type="range" 
@@ -161,76 +188,37 @@ const App: React.FC = () => {
                     max="10" 
                     value={config.languages}
                     onChange={(e) => setConfig({...config, languages: parseInt(e.target.value)})}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                   />
-                  <div className="flex justify-between text-xs text-gray-400 mt-1">
-                    <span>1</span>
-                    <span>10</span>
-                  </div>
+                  {estimatedPrices.extraLangs > 0 && (
+                    <p className="text-[10px] text-orange-600 font-bold mt-2 flex items-center gap-1">
+                      <Plus className="w-3 h-3" /> {estimatedPrices.extraLangs} extra language(s) detected
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Sitio</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Site Type</label>
                   <select 
                     value={config.siteType}
                     onChange={(e) => setConfig({...config, siteType: e.target.value as SiteType})}
-                    className="w-full border-gray-200 rounded-xl text-sm focus:ring-indigo-500 focus:border-indigo-500 p-2.5 bg-gray-50"
+                    className="w-full border-slate-200 rounded-xl text-sm focus:ring-indigo-500 focus:border-indigo-500 p-2.5 bg-slate-50"
                   >
-                    <option value={SiteType.BLOG_SaaS}>{SiteType.BLOG_SaaS}</option>
-                    <option value={SiteType.ECOMMERCE}>{SiteType.ECOMMERCE}</option>
-                    <option value={SiteType.ENTERPRISE}>{SiteType.ENTERPRISE}</option>
+                    {Object.values(SiteType).map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Complejidad Técnica</label>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Technical Complexity</label>
                   <div className="grid grid-cols-3 gap-2">
                     {Object.values(Complexity).map((lvl) => (
                       <button
                         key={lvl}
                         onClick={() => setConfig({...config, complexity: lvl})}
-                        className={`py-2 px-3 text-xs rounded-lg font-medium transition-all ${
+                        className={`py-2 px-3 text-xs rounded-lg font-bold transition-all ${
                           config.complexity === lvl 
                           ? 'bg-indigo-600 text-white shadow-md' 
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {lvl}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Deuda Técnica Inicial</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {Object.values(Complexity).map((lvl) => (
-                      <button
-                        key={lvl}
-                        onClick={() => setConfig({...config, technicalDebt: lvl})}
-                        className={`py-2 px-3 text-xs rounded-lg font-medium transition-all ${
-                          config.technicalDebt === lvl 
-                          ? 'bg-indigo-600 text-white shadow-md' 
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {lvl}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Volumen de Crecimiento (Contenidos)</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {Object.values(Complexity).map((lvl) => (
-                      <button
-                        key={lvl}
-                        onClick={() => setConfig({...config, contentVolume: lvl})}
-                        className={`py-2 px-3 text-xs rounded-lg font-medium transition-all ${
-                          config.contentVolume === lvl 
-                          ? 'bg-indigo-600 text-white shadow-md' 
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-transparent'
                         }`}
                       >
                         {lvl}
@@ -241,108 +229,103 @@ const App: React.FC = () => {
               </div>
             </section>
 
-            <div className="bg-indigo-900 text-indigo-100 p-6 rounded-2xl shadow-xl overflow-hidden relative">
-              <div className="relative z-10">
-                <h3 className="font-bold text-lg mb-2">¿Necesitas un resumen para el cliente?</h3>
-                <p className="text-sm text-indigo-200 mb-4">Usa nuestra IA para redactar los puntos clave de la propuesta comercial basados en estos datos.</p>
-                <button 
-                  onClick={generateAIProposal}
-                  disabled={isGenerating}
-                  className="w-full py-3 bg-white text-indigo-900 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-colors disabled:opacity-70"
-                >
-                  {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                  Generar con IA
-                </button>
+            {/* Add-ons Section */}
+            <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <div className="flex items-center gap-2 mb-6">
+                <Zap className="w-5 h-5 text-orange-500" />
+                <h2 className="text-lg font-semibold">Add-ons (Extras)</h2>
               </div>
-              <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-indigo-700/50 rounded-full blur-2xl"></div>
-            </div>
+
+              <div className="space-y-4">
+                {[
+                  { key: 'extraArticles' as const, label: 'Extra article', icon: <MessageSquare className="w-4 h-4" /> },
+                  { key: 'extraLandings' as const, label: 'Extra landing', icon: <Layout className="w-4 h-4" /> },
+                  { key: 'extraTechSprints' as const, label: 'Tech sprint (2-4h)', icon: <FileCode className="w-4 h-4" /> }
+                ].map((addon) => (
+                  <div key={addon.key} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <div className="text-slate-400">{addon.icon}</div>
+                      <span className="text-xs font-bold text-slate-700">{addon.label}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => updateAddon(addon.key, -1)} className="p-1 hover:bg-slate-200 rounded-lg transition-colors"><Minus className="w-4 h-4 text-slate-400" /></button>
+                      <span className="text-sm font-bold w-4 text-center">{addons[addon.key]}</span>
+                      <button onClick={() => updateAddon(addon.key, 1)} className="p-1 hover:bg-slate-200 rounded-lg transition-colors"><Plus className="w-4 h-4 text-indigo-600" /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
 
-          {/* Right Column: Dashboard & Results */}
+          {/* Results Column */}
           <div className="lg:col-span-8 space-y-8">
             
-            {/* Tiers Highlight */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {TIERS.map((tier) => (
-                <div 
-                  key={tier.name}
-                  className={`p-5 rounded-2xl border-2 transition-all ${
-                    recommendedTier.name === tier.name 
-                    ? 'border-indigo-600 bg-indigo-50/50 ring-4 ring-indigo-50' 
-                    : 'border-white bg-white grayscale opacity-80 scale-95'
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-3">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                      recommendedTier.name === tier.name ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'
-                    }`}>
-                      {recommendedTier.name === tier.name ? 'Recomendado' : 'Opción'}
-                    </span>
-                  </div>
-                  <h3 className="font-bold text-gray-900">{tier.name}</h3>
-                  <p className="text-[11px] text-gray-500 mt-1 h-8 leading-tight">{tier.target}</p>
-                  <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Setup:</span>
-                      <span className="font-semibold">{tier.setupRange[0]}€ - {tier.setupRange[1]}€</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Mensual:</span>
-                      <span className="font-semibold">{tier.monthlyRange[0]}€ - {tier.monthlyRange[1]}€</span>
-                    </div>
-                  </div>
+            {/* Tier Indicator */}
+            <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center gap-6">
+              <div className="bg-indigo-600 text-white p-4 rounded-2xl flex flex-col items-center justify-center min-w-[140px]">
+                <ShieldCheck className="w-8 h-8 mb-1" />
+                <span className="text-[10px] font-bold uppercase tracking-tighter opacity-80">Partner Plan</span>
+                <span className="font-bold text-center leading-tight">{recommendedTier.name.split(' ')[1] || recommendedTier.name}</span>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-slate-900">{recommendedTier.name}</h3>
+                <p className="text-sm text-slate-500">{recommendedTier.target}</p>
+                <div className="mt-3 flex gap-2 flex-wrap">
+                  {recommendedTier.features.slice(0, 3).map((f, i) => (
+                    <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-bold">{f}</span>
+                  ))}
+                  <span className="text-[10px] text-indigo-600 font-bold">+ See all below</span>
                 </div>
-              ))}
+              </div>
+              <div className="text-right border-l border-slate-100 pl-6 hidden md:block">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">From</p>
+                <p className="text-2xl font-black text-indigo-600">{recommendedTier.monthlyRange[0]}€<span className="text-xs font-normal">/mo</span></p>
+              </div>
             </div>
 
-            {/* Detailed Estimation Section */}
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            {/* Total Investment Card */}
+            <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
+              <div className="p-8 border-b border-slate-50 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                    Inversión Estimada
-                    <ShieldCheck className="w-6 h-6 text-green-500" />
-                  </h2>
-                  <p className="text-gray-500 mt-1">Valores proyectados según el perfil del sitio y alcance definido.</p>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Projected Final Investment</h2>
+                  <p className="text-slate-500 mt-1 flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-emerald-500" /> Optimized budget including add-ons.</p>
                 </div>
                 <div className="flex items-center gap-4">
-                   <div className="text-center p-3 bg-gray-50 rounded-2xl min-w-[120px]">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Setup (One-off)</p>
-                      <p className="text-2xl font-bold text-indigo-600">{estimatedPrices.setup}€</p>
+                   <div className="text-center p-4 bg-white rounded-2xl border border-slate-200 min-w-[140px] shadow-sm">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Setup One-off</p>
+                      <p className="text-3xl font-black text-slate-800">{estimatedPrices.setup}€</p>
                    </div>
-                   <div className="text-center p-3 bg-indigo-600 rounded-2xl min-w-[120px]">
-                      <p className="text-[10px] font-bold text-indigo-200 uppercase">Mensual (Fee)</p>
-                      <p className="text-2xl font-bold text-white">{estimatedPrices.monthly}€</p>
+                   <div className="text-center p-4 bg-indigo-600 rounded-2xl min-w-[140px] shadow-lg shadow-indigo-200">
+                      <p className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest">Monthly Fee</p>
+                      <p className="text-3xl font-black text-white">{estimatedPrices.monthly}€</p>
                    </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2">
-                <div className="p-8 border-r border-gray-50">
-                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4" /> Distribución de Costes
-                  </h3>
-                  <div className="h-64 w-full">
+                <div className="p-8 border-r border-slate-50">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-8">Investment Breakdown</h3>
+                  <div className="h-60 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
-                        <YAxis hide />
+                      <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                        <XAxis type="number" hide />
+                        <YAxis dataKey="name" type="category" fontSize={10} axisLine={false} tickLine={false} width={80} />
                         <Tooltip 
                           cursor={{ fill: 'transparent' }}
                           content={({ active, payload }) => {
                             if (active && payload && payload.length) {
                               return (
-                                <div className="bg-white p-3 shadow-lg border border-gray-100 rounded-xl">
-                                  <p className="text-xs font-bold text-gray-900">{payload[0].name}</p>
-                                  <p className="text-sm font-bold text-indigo-600">{payload[0].value}€</p>
+                                <div className="bg-white p-3 shadow-xl border border-slate-100 rounded-xl">
+                                  <p className="text-sm font-black text-indigo-600">{payload[0].value}€</p>
                                 </div>
                               );
                             }
                             return null;
                           }}
                         />
-                        <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={40}>
+                        <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={24}>
                           {chartData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                           ))}
@@ -350,71 +333,56 @@ const App: React.FC = () => {
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="mt-6 flex flex-wrap gap-4">
-                     <div className="flex items-center gap-2 text-xs">
-                        <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
-                        <span>Setup Estratégico</span>
-                     </div>
-                     <div className="flex items-center gap-2 text-xs">
-                        <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                        <span>Operativa Mensual</span>
-                     </div>
-                     <div className="flex items-center gap-2 text-xs">
-                        <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                        <span>Publicidad / Linkbuilding</span>
-                     </div>
-                  </div>
                 </div>
 
-                <div className="p-8 bg-gray-50/30">
-                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6">¿Qué incluye este plan?</h3>
+                <div className="p-8 bg-slate-50/20">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">What's included in your proposal?</h3>
                   <ul className="space-y-4">
                     {recommendedTier.features.map((feature, i) => (
                       <li key={i} className="flex items-start gap-3">
-                        <div className="mt-1 bg-green-100 p-0.5 rounded-full">
-                          <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        </div>
-                        <span className="text-sm text-gray-700 font-medium">{feature}</span>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5" />
+                        <span className="text-sm text-slate-700 font-semibold">{feature}</span>
                       </li>
                     ))}
-                    <li className="flex items-start gap-3 border-t border-gray-100 pt-4">
-                       <div className="mt-1 bg-orange-100 p-0.5 rounded-full">
-                          <Zap className="w-4 h-4 text-orange-600" />
-                       </div>
-                       <div>
-                          <span className="text-sm font-bold text-gray-900">Linkbuilding recomendado</span>
-                          <p className="text-xs text-gray-500">{recommendedTier.linkbuildingRange[0]}€ - {recommendedTier.linkbuildingRange[1]}€ / mes</p>
-                       </div>
-                    </li>
+                    {(addons.extraArticles > 0 || addons.extraLandings > 0 || addons.extraTechSprints > 0) && (
+                      <li className="pt-4 border-t border-slate-100">
+                        <p className="text-xs font-black text-indigo-600 uppercase mb-2">Selected Add-ons:</p>
+                        {addons.extraArticles > 0 && <p className="text-sm text-slate-600 flex justify-between"><span>Extra Articles:</span> <span className="font-bold">{addons.extraArticles}</span></p>}
+                        {addons.extraLandings > 0 && <p className="text-sm text-slate-600 flex justify-between"><span>Extra Landings:</span> <span className="font-bold">{addons.extraLandings}</span></p>}
+                        {addons.extraTechSprints > 0 && <p className="text-sm text-slate-600 flex justify-between"><span>Tech Sprints:</span> <span className="font-bold">{addons.extraTechSprints}</span></p>}
+                      </li>
+                    )}
                   </ul>
                 </div>
               </div>
             </div>
 
-            {/* AI Generated Text Output */}
+            {/* AI Text Block */}
             {(aiProposal || isGenerating) && (
-              <div className="bg-white rounded-3xl p-8 shadow-sm border border-indigo-100 animate-in fade-in duration-500">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-indigo-600" />
-                    <h3 className="font-bold text-lg">Resumen Ejecutivo IA</h3>
+              <div className="bg-white rounded-3xl p-8 shadow-sm border border-indigo-100">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-indigo-600 p-2 rounded-xl">
+                      <Sparkles className="w-5 h-5 text-white" />
+                    </div>
+                    <h3 className="font-black text-xl tracking-tight">Strategic Summary</h3>
                   </div>
                   <button 
                     onClick={() => navigator.clipboard.writeText(aiProposal)}
-                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                    className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors border border-indigo-100 flex items-center gap-2"
                   >
-                    <FileText className="w-4 h-4" /> Copiar Texto
+                    <FileText className="w-4 h-4" /> Copy for proposal
                   </button>
                 </div>
                 {isGenerating ? (
-                  <div className="space-y-4 animate-pulse">
-                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                    <div className="h-4 bg-gray-200 rounded w-full"></div>
-                    <div className="h-4 bg-gray-200 rounded w-5/6"></div>
-                    <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+                  <div className="space-y-5 animate-pulse">
+                    <div className="h-4 bg-slate-100 rounded w-3/4"></div>
+                    <div className="h-4 bg-slate-100 rounded w-full"></div>
+                    <div className="h-4 bg-slate-100 rounded w-5/6"></div>
+                    <div className="h-4 bg-slate-100 rounded w-2/3"></div>
                   </div>
                 ) : (
-                  <div className="prose prose-sm prose-indigo max-w-none text-gray-700 whitespace-pre-wrap leading-relaxed">
+                  <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed text-sm">
                     {aiProposal}
                   </div>
                 )}
@@ -424,20 +392,19 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Footer Floating Call to Action */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-2xl md:hidden">
-        <div className="flex items-center justify-between gap-4">
-           <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase">Mensual Estimado</p>
-              <p className="text-lg font-bold text-indigo-600">{estimatedPrices.monthly}€</p>
-           </div>
-           <button 
-            onClick={generateAIProposal}
-            className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2"
-           >
-             <Sparkles className="w-4 h-4" /> Resumen IA
-           </button>
+      {/* Floating CTA for Mobile */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-lg border-t border-slate-200 p-4 shadow-2xl md:hidden flex items-center justify-between z-40">
+        <div>
+           <p className="text-[10px] font-black text-slate-400 uppercase">Monthly with Add-ons</p>
+           <p className="text-xl font-black text-indigo-600">{estimatedPrices.monthly}€</p>
         </div>
+        <button 
+          onClick={generateAIProposal}
+          className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 active:scale-95 transition-transform"
+        >
+          {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+          AI Proposal
+        </button>
       </div>
     </div>
   );
