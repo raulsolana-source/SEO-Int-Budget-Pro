@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { GoogleGenAI } from '@google/genai';
+// Correct import statement according to @google/genai guidelines.
+import {GoogleGenAI} from "@google/genai";
 import { 
   Calculator, 
   Globe, 
@@ -15,7 +16,8 @@ import {
   Minus,
   MessageSquare,
   FileCode,
-  Layout
+  Layout,
+  Info
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -95,29 +97,37 @@ const App: React.FC = () => {
   }, [config, recommendedTier, addons]);
 
   const generateAIProposal = async () => {
+    if (!process.env.API_KEY) {
+      setAiProposal('Error: No se ha detectado la clave API_KEY en el entorno. Por favor, asegúrate de añadirla en la configuración de Vercel.');
+      return;
+    }
+
     setIsGenerating(true);
     setAiProposal('');
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
       const prompt = `
         Act as a Senior International SEO Consultant.
-        Generate a persuasive executive summary for a commercial SEO proposal under the "Partner" pricing model.
+        Generate a persuasive executive summary for a commercial SEO proposal.
+        Context: "Partner" Pricing Model 2026.
         Project details:
-        - Total languages: ${config.languages} (includes ${estimatedPrices.extraLangs} additional languages)
+        - Total languages: ${config.languages}
         - Site type: ${config.siteType}
-        - Complexity: ${config.complexity}
-        - Recommended plan: ${recommendedTier.name}
-        - Extras: ${addons.extraArticles} extra articles, ${addons.extraLandings} extra landings, ${addons.extraTechSprints} technical sprints.
-        - Setup Cost: ${estimatedPrices.setup}€
-        - Monthly Fee: ${estimatedPrices.monthly}€
+        - Project Complexity: ${config.complexity}
+        - Technical Debt: ${config.technicalDebt}
+        - Selected Plan: ${recommendedTier.name}
+        - Additional inclusions: ${addons.extraArticles} extra articles, ${addons.extraLandings} extra landings.
+        - Investment: Setup ${estimatedPrices.setup}€, Monthly ${estimatedPrices.monthly}€
         
-        The tone must be professional, strategic, and results-oriented.
-        Output in English. Structure the text in:
-        1. Strategic Challenge.
-        2. Our Solution (detail why the ${recommendedTier.name} plan is the right fit).
-        3. Value of selected Add-ons.
-        4. Estimated investment and next steps.
-        Use Markdown for formatting. Maximum 300 words.
+        Task: Write a short, strategic executive summary (English). 
+        Format: Markdown. 
+        Structure:
+        - Strategic Challenge
+        - The ${recommendedTier.name} Approach
+        - Value Proposition (including selected extras)
+        - Investment Summary
+        Tone: Bold, professional, executive. Max 250 words.
       `;
 
       const response = await ai.models.generateContent({
@@ -125,10 +135,17 @@ const App: React.FC = () => {
         contents: prompt,
       });
 
-      setAiProposal(response.text || 'Could not generate text.');
-    } catch (error) {
-      console.error(error);
-      setAiProposal('Error connecting to AI. Please ensure your API key is configured correctly in the environment.');
+      const text = response.text;
+      setAiProposal(text || 'The AI generated an empty response. Please try again.');
+    } catch (error: any) {
+      console.error('AI Generation Error:', error);
+      let errorMessage = 'Error al generar la propuesta. ';
+      if (error.message?.includes('API key')) {
+        errorMessage += 'La clave API no es válida o no tiene permisos.';
+      } else {
+        errorMessage += error.message || 'Error de conexión con el modelo.';
+      }
+      setAiProposal(errorMessage);
     } finally {
       setIsGenerating(false);
     }
@@ -136,7 +153,7 @@ const App: React.FC = () => {
 
   const chartData = [
     { name: 'Base Monthly', value: recommendedTier.monthlyRange[0] },
-    { name: 'Extras/Langs', value: estimatedPrices.monthly - recommendedTier.monthlyRange[0] },
+    { name: 'Extras/Langs', value: Math.max(0, estimatedPrices.monthly - recommendedTier.monthlyRange[0]) },
     { name: 'Setup', value: estimatedPrices.setup }
   ];
 
@@ -158,8 +175,13 @@ const App: React.FC = () => {
           </div>
           <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-500">
             <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-emerald-500" /> Partner Pricing 2026</span>
-            <button onClick={generateAIProposal} className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full hover:bg-indigo-100 transition-colors">
-              <Sparkles className="w-4 h-4" /> Generate Proposal
+            <button 
+              disabled={isGenerating}
+              onClick={generateAIProposal} 
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors ${isGenerating ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
+            >
+              {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              Generate Proposal
             </button>
           </div>
         </div>
@@ -269,7 +291,10 @@ const App: React.FC = () => {
                 <span className="font-bold text-center leading-tight">{recommendedTier.name.split(' ')[1] || recommendedTier.name}</span>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-slate-900">{recommendedTier.name}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-slate-900">{recommendedTier.name}</h3>
+                  <span className="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full font-black uppercase">Recommended</span>
+                </div>
                 <p className="text-sm text-slate-500">{recommendedTier.target}</p>
                 <div className="mt-3 flex gap-2 flex-wrap">
                   {recommendedTier.features.slice(0, 3).map((f, i) => (
@@ -279,17 +304,57 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className="text-right border-l border-slate-100 pl-6 hidden md:block">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">From</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Base Price From</p>
                 <p className="text-2xl font-black text-indigo-600">{recommendedTier.monthlyRange[0]}€<span className="text-xs font-normal">/mo</span></p>
               </div>
             </div>
+
+            {/* NEW: Plan Comparison Intervals */}
+            <section>
+              <div className="flex items-center gap-2 mb-4 px-2">
+                <Info className="w-4 h-4 text-slate-400" />
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Base Pricing Tiers Overview</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {TIERS.map((tier) => {
+                  const isRecommended = tier.name === recommendedTier.name;
+                  return (
+                    <div 
+                      key={tier.name}
+                      className={`p-4 rounded-2xl transition-all border ${
+                        isRecommended 
+                        ? 'bg-white border-indigo-500 shadow-lg ring-1 ring-indigo-500' 
+                        : 'bg-white border-slate-100 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <p className="text-xs font-black text-slate-900 leading-tight uppercase tracking-tighter">
+                          {tier.name.split(' ')[1]}
+                        </p>
+                        {isRecommended && <CheckCircle2 className="w-4 h-4 text-indigo-600" />}
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase">Setup Range</p>
+                          <p className="text-sm font-bold text-slate-700">{tier.setupRange[0]}€ – {tier.setupRange[1]}€</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase">Monthly Fee Range</p>
+                          <p className="text-sm font-bold text-indigo-600">{tier.monthlyRange[0]}€ – {tier.monthlyRange[1]}€</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
 
             {/* Total Investment Card */}
             <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
               <div className="p-8 border-b border-slate-50 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight">Projected Final Investment</h2>
-                  <p className="text-slate-500 mt-1 flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-emerald-500" /> Optimized budget including add-ons.</p>
+                  <p className="text-slate-500 mt-1 flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-emerald-500" /> Optimized budget including your selected add-ons.</p>
                 </div>
                 <div className="flex items-center gap-4">
                    <div className="text-center p-4 bg-white rounded-2xl border border-slate-200 min-w-[140px] shadow-sm">
@@ -368,7 +433,11 @@ const App: React.FC = () => {
                     <h3 className="font-black text-xl tracking-tight">Strategic Summary</h3>
                   </div>
                   <button 
-                    onClick={() => navigator.clipboard.writeText(aiProposal)}
+                    disabled={isGenerating || !aiProposal}
+                    onClick={() => {
+                      navigator.clipboard.writeText(aiProposal);
+                      alert('Propuesta copiada al portapapeles');
+                    }}
                     className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors border border-indigo-100 flex items-center gap-2"
                   >
                     <FileText className="w-4 h-4" /> Copy for proposal
@@ -382,7 +451,7 @@ const App: React.FC = () => {
                     <div className="h-4 bg-slate-100 rounded w-2/3"></div>
                   </div>
                 ) : (
-                  <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed text-sm whitespace-pre-wrap">
+                  <div className="prose prose-slate max-w-none text-slate-700 leading-relaxed text-sm whitespace-pre-wrap font-medium">
                     {aiProposal}
                   </div>
                 )}
@@ -399,8 +468,9 @@ const App: React.FC = () => {
            <p className="text-xl font-black text-indigo-600">{estimatedPrices.monthly}€</p>
         </div>
         <button 
+          disabled={isGenerating}
           onClick={generateAIProposal}
-          className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 active:scale-95 transition-transform"
+          className={`px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 active:scale-95 transition-transform ${isGenerating ? 'bg-slate-200 text-slate-500' : 'bg-indigo-600 text-white'}`}
         >
           {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
           AI Proposal
