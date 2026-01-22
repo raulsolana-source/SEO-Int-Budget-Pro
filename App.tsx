@@ -157,7 +157,7 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold tracking-tight">SEO Int <span className="text-indigo-600">Partner Pro</span></h1>
           </div>
           <div className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-500">
-            <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-emerald-500" /> Partner Pricing 2025</span>
+            <span className="flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-emerald-500" /> Partner Pricing 2026</span>
             <button onClick={generateAIProposal} className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full hover:bg-indigo-100 transition-colors">
               <Sparkles className="w-4 h-4" /> Generate Proposal
             </button>
